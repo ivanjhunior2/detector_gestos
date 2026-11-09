@@ -1,0 +1,12 @@
+# Python environments and generated files
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local MediaPipe model asset (download separately)
+models/*.task
+
+# Local webcam evaluation reports
+evaluacion_gestos_*.jsonl
+
