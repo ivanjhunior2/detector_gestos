@@ -18,6 +18,8 @@ from gesture_detector.config import (
 from gesture_detector.event_gate import GestureEventGate
 from gesture_detector.gesture_rules import GestureRuleRecognizer
 from gesture_detector.hand_tracker import HandTracker
+from gesture_detector.keyboard import KeyboardController
+from gesture_detector.sequence import SEQUENCE, GestureSequence
 from gesture_detector.visualizer import draw_hand_landmarks
 
 
@@ -50,9 +52,12 @@ class GestureTestApp:
         self.config = config or AppConfig()
         self.recognizer = GestureRuleRecognizer()
         self.gate = self._new_gate()
+        self.sequence = GestureSequence()
+        self.sequence_keyboard = KeyboardController(enabled=True)
         self.camera: Camera | None = None
         self.tracker: HandTracker | None = None
         self.running = False
+        self.frame_job: str | None = None
         self.photo: ImageTk.PhotoImage | None = None
         self.seal_images = self._load_seal_images()
         self.last_action = "Esperando gesto"
@@ -84,8 +89,25 @@ class GestureTestApp:
         )
         self.preview.grid(row=1, column=0, sticky="nsew", padx=(0, 14))
 
+        sequence_panel = ttk.LabelFrame(
+            container, text=f"Secuencia Q → W → E · {self.sequence.timeout_seconds:g} s desde Q",
+            padding=8,
+        )
+        sequence_panel.grid(row=2, column=0, sticky="ew", padx=(0, 14), pady=(8, 0))
+        sequence_panel.columnconfigure(0, weight=1)
+        self.sequence_status = tk.StringVar(value="0/3 · Haz Q para empezar")
+        self.sequence_count = tk.IntVar(value=0)
+        ttk.Label(sequence_panel, textvariable=self.sequence_status).grid(row=0, column=0, sticky="w")
+        ttk.Label(sequence_panel, text="Completadas").grid(row=0, column=1, padx=(12, 5))
+        ttk.Label(sequence_panel, textvariable=self.sequence_count).grid(row=0, column=2)
+        self.sequence_bar = ttk.Progressbar(sequence_panel, maximum=len(SEQUENCE))
+        self.sequence_bar.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(5, 0))
+        ttk.Label(sequence_panel, text="Al completar, envía Espacio a la aplicación con foco.").grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(5, 0),
+        )
+
         controls = ttk.Frame(container)
-        controls.grid(row=1, column=1, sticky="nsew")
+        controls.grid(row=1, column=1, rowspan=2, sticky="nsew")
         controls.columnconfigure(0, weight=1)
 
         ttk.Label(controls, text="Estado", font=("Segoe UI", 11, "bold")).grid(
@@ -225,18 +247,19 @@ class GestureTestApp:
         self._update_frame()
 
     def _update_frame(self) -> None:
+        self.frame_job = None
         if not self.running or self.camera is None or self.tracker is None:
             return
 
         try:
             frame = self.camera.read()
-            timestamp_ms = time.monotonic_ns() // 1_000_000
-            result = self.tracker.detect(frame, timestamp_ms)
+            captured_at = time.monotonic_ns()
+            result = self.tracker.detect(frame, captured_at // 1_000_000)
             label = self.recognizer.classify(result, frame.shape)
             event = self.gate.update(label)
+            key = GESTURE_TO_KEY.get(event)
 
-            if event is not None:
-                key = GESTURE_TO_KEY[event]
+            if event is not None and key is not None:
                 self.text_field.insert(tk.INSERT, key)
                 self.text_field.see(tk.INSERT)
                 display_name = GESTURE_DISPLAY_NAMES[event]
@@ -245,6 +268,8 @@ class GestureTestApp:
                 if selection and selection[0] != event:
                     expected_key = GESTURE_TO_KEY[selection[0]].upper()
                     self.last_action += f" · esperabas {expected_key}"
+
+            self._update_sequence(key, captured_at / 1_000_000_000)
 
             hands_detected = len(result.hand_landmarks)
             selection = self.gesture_list.selection()
@@ -274,12 +299,31 @@ class GestureTestApp:
                 f"Cámara activa · {prediction}\nÚltima tecla: {self.last_action}"
             )
         except (CameraError, RuntimeError, OSError, ValueError) as error:
-            LOGGER.exception("Falló la actualización de la cámara")
+            LOGGER.exception("Falló la prueba de gestos")
             self.stop()
             messagebox.showerror("Error durante la prueba", str(error), parent=self.root)
             return
 
-        self.root.after(FRAME_INTERVAL_MS, self._update_frame)
+        self.frame_job = self.root.after(FRAME_INTERVAL_MS, self._update_frame)
+
+    def _update_sequence(self, key: str | None, now: float) -> None:
+        previous = self.sequence.progress
+        if self.sequence.update(key, now):
+            self.sequence_count.set(self.sequence_count.get() + 1)
+            self.sequence_bar.configure(value=len(SEQUENCE))
+            self.sequence_keyboard.press_key("space")
+            self.sequence_status.set("3/3 · Espacio enviado")
+        elif self.sequence.progress != previous:
+            self._show_sequence_progress()
+
+    def _show_sequence_progress(self) -> None:
+        matched = len(self.sequence.progress)
+        self.sequence_bar.configure(value=matched)
+        if matched:
+            next_key = SEQUENCE[matched].upper()
+            self.sequence_status.set(f"{matched}/{len(SEQUENCE)} · Ahora haz {next_key}")
+        else:
+            self.sequence_status.set("0/3 · Haz Q para empezar")
 
     def _show_frame(self, frame) -> None:
         width, height = PREVIEW_SIZE
@@ -294,6 +338,11 @@ class GestureTestApp:
 
     def stop(self) -> None:
         self.running = False
+        if self.frame_job is not None:
+            self.root.after_cancel(self.frame_job)
+            self.frame_job = None
+        self.sequence.reset()
+        self._show_sequence_progress()
         self._release_resources()
         self.start_button.configure(state=tk.NORMAL)
         self.stop_button.configure(state=tk.DISABLED)

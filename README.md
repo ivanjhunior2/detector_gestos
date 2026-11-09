@@ -1,8 +1,10 @@
 # Detector de gestos para teclado
 
-**Versión 1.0.0 · Windows · Python 3.10**
+**Versión 2.0.0 · Windows · Python 3.10**
 
 Convierte seis gestos de manos captados por la webcam en pulsaciones de teclado. La interfaz muestra la cámara en espejo, los puntos de las manos y una guía ilustrada para practicar cada gesto. Las letras detectadas aparecen en un campo de prueba.
+
+La versión 2.0.0 añade la secuencia **Q → W → E**, que envía una pulsación de **Espacio** a la aplicación activa.
 
 ## Gestos y teclas
 
@@ -38,7 +40,7 @@ Si ya tienes el entorno del proyecto, basta con ejecutar el segundo comando. Des
 
 Pulsa **Iniciar cámara** y elige una opción en **Gestos para probar**. Verás el dibujo del gesto y sus instrucciones. Forma el gesto y comprueba la letra en **Campo de prueba**.
 
-**Pulsaciones en otra aplicación**
+**Pulsaciones individuales en otra aplicación**
 
 ```powershell
 .\venv\Scripts\python.exe run_gesture_typing.py --send-keys
@@ -46,20 +48,24 @@ Pulsa **Iniciar cámara** y elige una opción en **Gestos para probar**. Verás 
 
 Cierra primero la interfaz de práctica para liberar la cámara. Después de iniciar el modo de teclado, enfoca la aplicación que recibirá las pulsaciones, como el Bloc de notas. Puedes omitir `--send-keys` para simular las pulsaciones en la terminal.
 
+## Cómo probar la secuencia Q → W → E
+
+1. Abre `run_gesture_gui.py` y pulsa **Iniciar cámara**. El panel debajo de la cámara muestra el progreso y el contador **Completadas**.
+2. Enfoca el Bloc de notas y escribe `A` para tener una referencia visible.
+3. Haz **Bode (Q) → Cachorro (W) → Javali (E)**. Completa la secuencia en cuatro segundos desde que se confirma Q. El panel debe indicar **Espacio enviado** y el contador debe subir en uno.
+4. Mantén el último gesto, **Javali (E)**, durante unos segundos. Luego baja las manos y escribe `B`. El resultado debe ser `A B`, con exactamente un espacio, y el contador debe conservar el mismo valor.
+5. Si quieres comprobar el reinicio, vuelve a hacer la secuencia completa. Un gesto confirmado fuera de orden cancela el intento. Una nueva Q inicia otra cuenta de cuatro segundos.
+
 ## Cómo funciona
 
 OpenCV captura la imagen y MediaPipe estima 21 puntos por mano. El clasificador compara la geometría de la postura con las reglas de los seis gestos. La aplicación confirma el candidato después de cuatro fotogramas consecutivos y genera una sola pulsación mientras se mantiene el gesto. PyAutoGUI envía las teclas en el modo de teclado y Tkinter muestra la interfaz de práctica.
 
-## Validación de la versión 1.0
+## Validación
 
-El funcionamiento de la versión 1.0 fue validado manualmente por el autor con su webcam en Windows. Las pruebas automatizadas usan datos simulados para cubrir los seis gestos, sus variantes en espejo, la palma abierta con cualquiera de las manos, la distinción entre posturas similares y la emisión de una sola pulsación al sostener un gesto.
+El autor validó con su webcam en Windows el reconocimiento de los gestos individuales en la versión 1.0 y la pulsación de Espacio al completar la secuencia en la versión 2.0. Las pruebas automatizadas cubren los seis gestos y sus variantes, el orden de la secuencia, el límite de tiempo y el evento único al sostener el último gesto.
 
 ```powershell
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 Para repetir la evaluación con una webcam, ejecuta `evaluate_gestures.py` con el mismo intérprete. El asistente guía los intentos en ambas orientaciones y genera un informe local con los puntos de las manos y las predicciones.
-
-## Alcance
-
-La versión 1.0 reconoce posturas individuales. El reconocimiento de secuencias de sellos queda para una versión posterior.

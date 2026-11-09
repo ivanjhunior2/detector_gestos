@@ -19,6 +19,14 @@ class KeyboardController:
         if not self.enabled:
             return f"SIMULACIÓN: {gesture} → {key.upper()}"
 
+        self.press_key(key)
+        return f"PULSACIÓN: {gesture} → {key.upper()}"
+
+    def press_key(self, key: str) -> None:
+        """Send one press and release to the application with focus."""
+        if not self.enabled:
+            return
+
         if self._pyautogui is None:
             try:
                 import pyautogui
@@ -39,5 +47,3 @@ class KeyboardController:
                 "PyAutoGUI activó su fail-safe; mueve el cursor fuera de una "
                 "esquina y reinicia la aplicación."
             ) from error
-
-        return f"PULSACIÓN: {gesture} → {key.upper()}"
